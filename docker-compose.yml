@@ -1,36 +1,49 @@
 version: '3'
 
 services:
-  app:
-    build:
-      context: ./node
-      dockerfile: Dockerfile
-    restart: always
-    volumes:
-      - ./node:/usr/src/app
-      - /usr/src/app/node_modules
-    tty: true
-    depends_on:
-      - db
-
-  db:
-    image: mysql:5.7
-    command: --innodb-use-native-aio=0
-    restart: always
-    tty: true
-    volumes:
-      - ./mysql:/var/lib/mysql
-      - ./node/.docker/mysql:/docker-entrypoint-initdb.d
-    environment:
-      - MYSQL_DATABASE=nodedb
-      - MYSQL_ROOT_PASSWORD=password
-
+  
+  # Nginx proxy
   nginx:
+    container_name: nginx-proxy
     build:
       context: ./nginx
       dockerfile: Dockerfile
     ports:
       - "8080:80"
     depends_on:
-      - db
       - app
+      - db
+    networks:
+      - nginx-node-network
+
+  # Node app
+  app:
+    container_name: node-app
+    build:
+      context: ./node
+      dockerfile: Dockerfile
+    entrypoint: dockerize -wait tcp://db:3306 -timeout 20s npm start
+    tty: true
+    depends_on:
+      - db
+    networks:
+      - nginx-node-network
+
+  # App DB
+  db:
+    container_name: app-db
+    image: mysql:5.7
+    command: --innodb-use-native-aio=0
+    restart: always
+    tty: true
+    volumes:
+      - ./node/.docker/mysql:/docker-entrypoint-initdb.d
+    environment:
+      - MYSQL_DATABASE=nodedb
+      - MYSQL_ROOT_PASSWORD=password
+    networks:
+      - nginx-node-network
+
+networks:
+  nginx-node-network:
+    driver: bridge
